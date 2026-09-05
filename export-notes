@@ -16,6 +16,22 @@
 #   --reihenfolge ordner       nach Ordner gruppiert, wie in Apple Notizen
 #   --reihenfolge titel        alphabetisch
 #
+# Zusaetzliche Ausgabeformate (Voreinstellung: nur pages):
+#   --formate pages,pdf        erzeugt zusaetzlich ein PDF
+#   --formate pages,pdf,epub   PDF und E-Book
+#   moeglich: pages, pdf, epub, word, text
+#   --bildqualitaet good|better|best   Bilder in PDF/EPUB (Standard: good)
+#     good = 4,5 MB · better = 7 MB · best = 71 MB (bei ~270 Notizen)
+#
+# Automatischer Export (macOS launchd):
+#   --zeitplan taeglich          jeden Tag um 20:00
+#   --zeitplan woechentlich      sonntags um 20:00
+#   --zeitplan taeglich --um 03:30    eigene Uhrzeit
+#   --zeitplan status            zeigt, was eingerichtet ist
+#   --zeitplan aus               schaltet ihn wieder ab
+#   Weitere Optionen werden uebernommen, z. B.:
+#     ./export-notes --zeitplan taeglich --formate pages,pdf
+#
 # Beispiel:  ./export-notes --all --reihenfolge rueckwaerts
 #
 # Datenschutz: Waehrend des Exports liegen die Notizinhalte im Klartext im
@@ -34,8 +50,10 @@ ZIEL_NAME="Apple Notes Gesamtexport"
 SKIP_ORDNER="Recently Deleted"     # Papierkorb bleibt aussen vor
 PAGES_BOX="$HOME/Library/Mobile Documents/com~apple~Pages/Documents"
 
-MODUS="all"; LIMIT=0; MIT_PAGES=1; REIHENFOLGE="tagebuch"
+MODUS="all"; LIMIT=0; MIT_PAGES=1; REIHENFOLGE="tagebuch"; FORMATE="pages"
+ZEITPLAN=""; UHRZEIT="20:00"; BILDQUALITAET="Good"
 ERLAUBTE_REIHENFOLGEN="tagebuch rueckwaerts geaendert ordner titel"
+ERLAUBTE_FORMATE="pages pdf epub word text"
 
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -46,6 +64,14 @@ while [ $# -gt 0 ]; do
     --aufraeumen) MODUS="aufraeumen" ;;
     --reihenfolge)   shift; REIHENFOLGE="${1:-}" ;;
     --reihenfolge=*) REIHENFOLGE="${1#*=}" ;;
+    --formate)       shift; FORMATE="${1:-}" ;;
+    --formate=*)     FORMATE="${1#*=}" ;;
+    --bildqualitaet)   shift; BILDQUALITAET="${1:-Good}" ;;
+    --bildqualitaet=*) BILDQUALITAET="${1#*=}" ;;
+    --zeitplan)      shift; ZEITPLAN="${1:-status}"; MODUS="zeitplan" ;;
+    --zeitplan=*)    ZEITPLAN="${1#*=}"; MODUS="zeitplan" ;;
+    --um)            shift; UHRZEIT="${1:-20:00}" ;;
+    --um=*)          UHRZEIT="${1#*=}" ;;
     -h|--help) sed -n '2,30p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
     *) echo "Unbekannte Option: $1  (--help zeigt die Hilfe)"; exit 2 ;;
   esac
@@ -57,6 +83,22 @@ case " $ERLAUBTE_REIHENFOLGEN " in
   *) echo "Unbekannte Reihenfolge: $REIHENFOLGE"
      echo "Moeglich sind: $ERLAUBTE_REIHENFOLGEN"; exit 2 ;;
 esac
+
+case "$(echo "$BILDQUALITAET" | tr '[:upper:]' '[:lower:]')" in
+  good)   BILDQUALITAET="Good" ;;
+  better) BILDQUALITAET="Better" ;;
+  best)   BILDQUALITAET="Best" ;;
+  *) echo "Unbekannte Bildqualitaet: $BILDQUALITAET"
+     echo "Moeglich sind: good, better, best"; exit 2 ;;
+esac
+
+for _f in ${FORMATE//,/ }; do
+  case " $ERLAUBTE_FORMATE " in
+    *" $_f "*) ;;
+    *) echo "Unbekanntes Format: $_f"
+       echo "Moeglich sind: $ERLAUBTE_FORMATE"; exit 2 ;;
+  esac
+done
 
 WORK="$HIER/work/$MODUS"
 LOGDIR="$HIER/logs"
@@ -113,8 +155,28 @@ mit_zeitlimit() {
 titel() { echo "" | tee -a "$LOG"; echo "▸ $*" | tee -a "$LOG"; }
 
 sag "Apple Notes → Pages · Export vom $(date '+%d.%m.%Y um %H:%M:%S')"
-sag "Modus: $MODUS   Reihenfolge: $REIHENFOLGE"
+sag "Modus: $MODUS   Reihenfolge: $REIHENFOLGE   Formate: $FORMATE"
 sag "Protokoll: ${LOG/#$HOME/~}"
+
+# -------------------------------------------------------------- Zeitplan ----
+if [ "$MODUS" = "zeitplan" ]; then
+  # shellcheck source=lib/zeitplan.sh
+  . "$HIER/lib/zeitplan.sh"
+  case "$ZEITPLAN" in
+    status) zeitplan_status ;;
+    aus|off) zeitplan_aus ;;
+    taeglich|woechentlich)
+      if ! echo "$UHRZEIT" | grep -qE '^[0-2][0-9]:[0-5][0-9]$'; then
+        echo "Ungueltige Uhrzeit: $UHRZEIT  (erwartet HH:MM, z. B. 20:00)"; exit 2
+      fi
+      ARGS=(--all --reihenfolge "$REIHENFOLGE" --formate "$FORMATE"
+            --bildqualitaet "$BILDQUALITAET")
+      zeitplan_ein "$ZEITPLAN" "$UHRZEIT" "$HIER" "${ARGS[@]}" ;;
+    *) echo "Unbekannte Angabe: --zeitplan $ZEITPLAN"
+       echo "Moeglich sind: taeglich, woechentlich, status, aus"; exit 2 ;;
+  esac
+  exit 0
+fi
 
 # ------------------------------------------------------------ Aufraeumen ----
 if [ "$MODUS" = "aufraeumen" ]; then
@@ -246,24 +308,34 @@ if [ "$MIT_PAGES" = "1" ]; then
   # Pages laeuft in einer Sandbox und darf nur in den eigenen iCloud-Ordner
   # schreiben. Deshalb dort sichern und die fertige Datei anschliessend
   # ans Ziel verschieben.
-  STAGE=""
-  if mit_zeitlimit 900 osascript -l JavaScript "$HIER/lib/to_pages.js" \
-       "$DOCX" "$ZIEL_PAGES" "$PAGES_BOX" >"$WORK/stage.txt" 2>>"$LOG"; then
-    STAGE="$(cat "$WORK/stage.txt" 2>/dev/null | tail -1)"
+  if mit_zeitlimit 1800 osascript -l JavaScript "$HIER/lib/to_pages.js" \
+       "$DOCX" "$ZIEL_PAGES" "$PAGES_BOX" "$FORMATE" "$BILDQUALITAET" \
+       >"$WORK/stage.txt" 2>>"$LOG"; then
+    # Jede Zeile: <format><Tab><Pfad>  — ans Ziel verschieben
+    while IFS=$'\t' read -r FMT QUELLE; do
+      [ -z "${QUELLE:-}" ] && continue
+      case "$QUELLE" in FEHLER*)
+        sag "  ! $FMT: ${QUELLE#FEHLER: }"; continue ;;
+      esac
+      [ -e "$QUELLE" ] || { sag "  ! $FMT: Datei fehlt"; continue; }
+      case "$FMT" in
+        pages) ENDUNG="pages" ;; pdf) ENDUNG="pdf" ;; epub) ENDUNG="epub" ;;
+        word)  ENDUNG="docx"  ;; text) ENDUNG="txt" ;; *) ENDUNG="$FMT" ;;
+      esac
+      ZIELDATEI="$(ziel_frei "$ZIEL_NAME" "$ENDUNG")"
+      if mv "$QUELLE" "$ZIELDATEI" 2>>"$LOG"; then
+        sag "  ✓ $(basename "$ZIELDATEI")"
+        [ "$FMT" = "pages" ] && ERGEBNIS="$ZIELDATEI"
+        [ -z "$ERGEBNIS" ] && ERGEBNIS="$ZIELDATEI"
+      else
+        sag "  ! $FMT: Verschieben fehlgeschlagen, liegt unter ${QUELLE/#$HOME/~}"
+      fi
+    done < "$WORK/stage.txt"
   else
-    sag "  ! Pages hat nicht innerhalb von 15 Minuten geantwortet."
+    sag "  ! Pages hat nicht rechtzeitig geantwortet."
     sag "    Moeglicherweise wartet dort ein Dialog auf eine Eingabe."
   fi
-  if [ -n "$STAGE" ] && [ -e "$STAGE" ]; then
-    if mv "$STAGE" "$ZIEL_PAGES" 2>>"$LOG"; then
-      sag "  ✓ $(basename "$ZIEL_PAGES")"
-      ERGEBNIS="$ZIEL_PAGES"
-    else
-      sag "  ! Verschieben nach iCloud Drive fehlgeschlagen."
-      sag "    Die Datei liegt unter: ${STAGE/#$HOME/~}"
-      ERGEBNIS="$STAGE"
-    fi
-  else
+  if [ -z "$ERGEBNIS" ]; then
     sag "  ! Pages-Umwandlung nicht moeglich (Details im Protokoll) — DOCX wird abgelegt."
     MIT_PAGES=0
   fi
