@@ -6,7 +6,7 @@ Führt **alle** Apple-Notizen zu **einem** Pages-Dokument zusammen — mit
 klickbarem Inhaltsverzeichnis, erhaltener Formatierung und Bildern.
 Ein Befehl, wiederholbar, rein lesend.
 
-![macOS](https://img.shields.io/badge/macOS-13%2B-lightgrey)
+![macOS](https://img.shields.io/badge/getestet%20auf-macOS%2026-lightgrey)
 ![Lizenz](https://img.shields.io/badge/Lizenz-MIT-blue)
 ![Abhängigkeiten](https://img.shields.io/badge/Abhängigkeiten-keine-brightgreen)
 
@@ -19,6 +19,15 @@ Ein Befehl, wiederholbar, rein lesend.
 > keine Fremddienste.
 
 ---
+
+## Getestet mit
+
+Entwickelt und überprüft auf **macOS 26.6 mit Pages 15.3**, gegen einen
+einzelnen iCloud-Account mit rund 270 Notizen. Auf älteren macOS-Versionen
+sollte es ebenfalls laufen — die benutzten Schnittstellen (Notizen- und
+Pages-Scripting, `sips`) gibt es seit Jahren —, geprüft ist das aber nicht.
+Dasselbe gilt für andere Kontotypen (Gmail, Exchange, „Auf meinem Mac“),
+geteilte Notizen und deutlich größere Bestände.
 
 ## Benutzung
 

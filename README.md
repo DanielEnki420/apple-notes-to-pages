@@ -4,7 +4,7 @@ Merges **all** your Apple Notes into **one** Pages document — with a clickable
 table of contents, preserved formatting and embedded images. One command,
 repeatable, strictly read-only.
 
-![macOS](https://img.shields.io/badge/macOS-13%2B-lightgrey)
+![macOS](https://img.shields.io/badge/tested%20on-macOS%2026-lightgrey)
 ![License](https://img.shields.io/badge/License-MIT-blue)
 ![Dependencies](https://img.shields.io/badge/dependencies-none-brightgreen)
 
@@ -19,6 +19,17 @@ repeatable, strictly read-only.
 *[Deutsche Fassung](README.de.md)*
 
 ---
+
+## Tested with
+
+Developed and verified on **macOS 26.6 with Pages 15.3** against a single
+iCloud account holding ~270 notes. It should work on older macOS versions — the
+interfaces it uses (Notes and Pages scripting, `sips`) have been around for
+years — but that is untested. The same goes for other account types
+(Gmail, Exchange, "On My Mac"), shared notes, and much larger collections.
+
+If you run into trouble on a different setup, an issue with your macOS and
+Pages version is genuinely useful.
 
 ## Usage
 
