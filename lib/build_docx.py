@@ -22,6 +22,12 @@ try:
 except ImportError:
     HAVE_PIL = False
 
+DE = os.environ.get('EXPORT_NOTES_LANG', 'de') == 'de'
+
+def t(de, en):
+    """Text in der Sprache, in der auch das Programm spricht."""
+    return de if DE else en
+
 EMU_PER_PX   = 9525
 MAX_IMG_W    = 5486400        # 6,0 Zoll nutzbare Textbreite (A4 minus Raender)
 MAX_IMG_H    = 7315200        # 8,0 Zoll, damit ein Bild nicht mehrseitig wird
@@ -522,11 +528,14 @@ def core_props(title, count):
         '<cp:coreProperties xmlns:cp="http://schemas.openxmlformats.org/package/2006/metadata/core-properties" '
         'xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:dcterms="http://purl.org/dc/terms/" '
         'xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">'
-        '<dc:title>%s</dc:title><dc:subject>Export aus Apple Notizen (%d Notizen)</dc:subject>'
+        '<dc:title>%s</dc:title><dc:subject>%s</dc:subject>'
         '<dc:creator>export-notes</dc:creator>'
         '<dcterms:created xsi:type="dcterms:W3CDTF">%s</dcterms:created>'
         '<dcterms:modified xsi:type="dcterms:W3CDTF">%s</dcterms:modified>'
-        '</cp:coreProperties>' % (esc(title), count, now, now))
+        '</cp:coreProperties>'
+        % (esc(title),
+           esc(t('Export aus Apple Notizen (%d Notizen)',
+                 'Export from Apple Notes (%d notes)') % count), now, now))
 
 APP_PROPS = ('<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
     '<Properties xmlns="http://schemas.openxmlformats.org/officeDocument/2006/extended-properties">'
@@ -572,11 +581,13 @@ def render_cell_xml(doc, cell_blocks):
     return xml
 
 SORTIERUNGEN = {
-    'tagebuch': 'chronologisch, aelteste zuerst (nach Erstellungsdatum)',
-    'rueckwaerts': 'chronologisch rueckwaerts, neueste zuerst',
-    'geaendert': 'zuletzt geaenderte zuerst',
-    'ordner': 'nach Ordner gruppiert, darin neueste zuerst',
-    'titel': 'alphabetisch nach Titel',
+    'tagebuch':    t('chronologisch, älteste zuerst', 'chronological, oldest first'),
+    'rueckwaerts': t('chronologisch rückwärts, neueste zuerst',
+                     'reverse chronological, newest first'),
+    'geaendert':   t('zuletzt geänderte zuerst', 'most recently edited first'),
+    'ordner':      t('nach Ordner gruppiert, darin neueste zuerst',
+                     'grouped by folder, newest first within'),
+    'titel':       t('alphabetisch nach Titel', 'alphabetical by title'),
 }
 
 
@@ -641,24 +652,31 @@ def main():
               'locked': [], 'lost_images': [], 'images': 0}
 
     # ---- Titelseite ----
-    doc.para([Run('Apple Notes Gesamtexport')], style='Title')
-    doc.para([Run('%d Notizen · exportiert am %s'
-                  % (len(notes), datetime.now().strftime('%d.%m.%Y um %H:%M')))],
+    doc.para([Run(t('Apple Notes Gesamtexport', 'Apple Notes Export'))], style='Title')
+    doc.para([Run(t('%d Notizen · exportiert am %s'
+                    % (len(notes), datetime.now().strftime('%d.%m.%Y um %H:%M')),
+                    '%d notes · exported %s'
+                    % (len(notes), datetime.now().strftime('%Y-%m-%d %H:%M'))))],
              style='Subtitle')
-    doc.para([Run('Reihenfolge: %s' % SORTIERUNGEN[modus])], style='NoteMeta')
+    doc.para([Run(t('Reihenfolge: %s', 'Order: %s') % SORTIERUNGEN[modus])],
+             style='NoteMeta')
 
     # ---- Inhaltsverzeichnis ----
-    doc.para([Run('Inhaltsverzeichnis')], style='Heading1', page_break=True)
-    doc.para([Run('Pages kann zusätzlich ein eigenes, automatisch gepflegtes '
-                  'Inhaltsverzeichnis einblenden: Menü „Ansicht“ → '
-                  '„Inhaltsverzeichnis einblenden“.')], style='NoteMeta')
+    doc.para([Run(t('Inhaltsverzeichnis', 'Table of contents'))],
+             style='Heading1', page_break=True)
+    doc.para([Run(t('Pages kann zusätzlich ein eigenes, automatisch gepflegtes '
+                    'Inhaltsverzeichnis einblenden: Menü „Ansicht“ → '
+                    '„Inhaltsverzeichnis einblenden“.',
+                    'Pages can also show its own automatically maintained table '
+                    'of contents: View → Show Table of Contents.'))],
+             style='NoteMeta')
     # Mehrfach vergebene Titel (Apple vergibt oft "Neue Notiz") bekommen im
     # Verzeichnis das Datum dazu — sonst stehen mehrere gleich aussehende
     # Eintraege untereinander und man weiss nicht, welcher welcher ist.
     haeufigkeit = {}
     for n in notes:
-        t = (n['title'] or '(ohne Titel)').strip()
-        haeufigkeit[t] = haeufigkeit.get(t, 0) + 1
+        titel_text = (n['title'] or t('(ohne Titel)', '(untitled)')).strip()
+        haeufigkeit[titel_text] = haeufigkeit.get(titel_text, 0) + 1
 
     # Zwischenueberschriften passend zur Sortierung: nach Ordner gruppiert
     # sind Ordnernamen sinnvoll, chronologisch sortiert die Jahreszahl.
@@ -673,7 +691,7 @@ def main():
         if gruppe and gruppe != letzte_gruppe:
             doc.para([Run(gruppe, b=True)], style='Heading3')
             letzte_gruppe = gruppe
-        title = (n['title'] or '(ohne Titel)').strip()
+        title = (n['title'] or t('(ohne Titel)', '(untitled)')).strip()
         beschriftung = title
         if haeufigkeit.get(title, 0) > 1:
             datum = fmt_date(n.get('created')) or fmt_date(n.get('modified'))
@@ -687,19 +705,25 @@ def main():
 
     # ---- Notizen ----
     for n in notes:
-        title = n['title'] or '(ohne Titel)'
+        title = n['title'] or t('(ohne Titel)', '(untitled)')
         path = os.path.join(work_dir, 'notes', n['file'])
         if n.get('locked'):
             doc.para([Run(title)], style='Heading1',
                      bookmark='note%d' % n['index'], page_break=True)
-            doc.para([Run('Ordner: %s · passwortgeschützt' % n.get('folder', '?'))],
-                     style='NoteMeta')
-            doc.para([Run('Diese Notiz ist in Apple Notizen mit einem Passwort '
-                          'geschützt. Gesperrte Notizen geben ihren Inhalt aus '
-                          'Sicherheitsgründen nicht an die Automatisierung weiter — '
-                          'der Text ist deshalb hier nicht enthalten. Er lässt sich '
-                          'nur direkt in Apple Notizen nach Eingabe des Passworts '
-                          'einsehen.')])
+            doc.para([Run(t('Ordner: %s · passwortgeschützt',
+                            'Folder: %s · password-protected')
+                          % n.get('folder', '?'))], style='NoteMeta')
+            doc.para([Run(t('Diese Notiz ist in Apple Notizen mit einem Passwort '
+                            'geschützt. Gesperrte Notizen geben ihren Inhalt aus '
+                            'Sicherheitsgründen nicht an die Automatisierung weiter — '
+                            'der Text ist deshalb hier nicht enthalten. Er lässt sich '
+                            'nur direkt in Apple Notizen nach Eingabe des Passworts '
+                            'einsehen.',
+                            'This note is password-protected in Apple Notes. Locked '
+                            'notes do not hand their contents to automation, for '
+                            'security reasons — the text is therefore not included '
+                            'here. It can only be viewed directly in Apple Notes '
+                            'after entering the password.'))])
             report['locked'].append({'title': title, 'id': n.get('id'),
                                      'folder': n.get('folder')})
             report['ok'] += 1
@@ -718,11 +742,12 @@ def main():
                  bookmark='note%d' % n['index'], page_break=True)
 
         meta = []
-        if n.get('folder'): meta.append('Ordner: %s' % n['folder'])
+        if n.get('folder'):
+            meta.append(t('Ordner: %s', 'Folder: %s') % n['folder'])
         d = fmt_date(n.get('created'))
-        if d: meta.append('erstellt %s' % d)
+        if d: meta.append(t('erstellt %s', 'created %s') % d)
         d = fmt_date(n.get('modified'))
-        if d: meta.append('geändert %s' % d)
+        if d: meta.append(t('geändert %s', 'modified %s') % d)
         if meta:
             doc.para([Run(' · '.join(meta))], style='NoteMeta')
 
@@ -734,7 +759,8 @@ def main():
             parser.flush()
             blocks = parser.blocks
             if not blocks:
-                doc.para([Run('(Diese Notiz enthält keinen darstellbaren Inhalt.)')],
+                doc.para([Run(t('(Diese Notiz enthält keinen darstellbaren Inhalt.)',
+                                '(This note has no displayable content.)'))],
                          style='NoteMeta')
                 report['empty'].append({'title': title, 'id': n.get('id')})
             render_blocks(doc, blocks)
@@ -743,7 +769,8 @@ def main():
                 report['lost_images'].append({'title': title, 'format': fmt})
             report['ok'] += 1
         except Exception as e:
-            doc.para([Run('(Inhalt konnte nicht vollständig umgewandelt werden: %s)' % e)],
+            doc.para([Run(t('(Inhalt konnte nicht vollständig umgewandelt werden: %s)',
+                            '(Content could not be fully converted: %s)') % e)],
                      style='NoteMeta')
             report['failed'].append({'title': title, 'id': n.get('id'),
                                      'grund': 'Umwandlung fehlgeschlagen: %s' % e})

@@ -38,7 +38,7 @@ Pages version is genuinely useful.
 ./export-notes --test       # 3 notes only, to try it out
 ./export-notes --docx       # produce DOCX only, skip the Pages step
 ./export-notes --status     # what changed since the last export?
-./export-notes --aufraeumen # delete the intermediate files (see Privacy)
+./export-notes --cleanup # delete the intermediate files (see Privacy)
 ```
 
 **Result:** `iCloud Drive/Apple Notes Export/Apple Notes Gesamtexport.pages`
@@ -50,23 +50,23 @@ second.
 ### Note order
 
 ```bash
-./export-notes --reihenfolge tagebuch     # oldest first (default, "diary")
-./export-notes --reihenfolge rueckwaerts  # newest first
-./export-notes --reihenfolge geaendert    # most recently edited first
-./export-notes --reihenfolge ordner       # grouped by folder, as in Notes
-./export-notes --reihenfolge titel        # alphabetical
+./export-notes --order diary     # oldest first (default, "diary")
+./export-notes --order reverse  # newest first
+./export-notes --order modified    # most recently edited first
+./export-notes --order folder       # grouped by folder, as in Notes
+./export-notes --order title        # alphabetical
 ```
 
-`tagebuch` sorts by **creation date**, not by last modification — otherwise an
+`diary` sorts by **creation date**, not by last modification — otherwise an
 old note would jump to the front the moment you touch it. The three
-chronological orders group the table of contents by year; `ordner` groups it by
+chronological orders group the table of contents by year; `folder` groups it by
 folder name.
 
 ### Output formats
 
 ```bash
-./export-notes --formate pages,pdf        # additionally a PDF
-./export-notes --formate pages,pdf,epub   # PDF and e-book
+./export-notes --formats pages,pdf        # additionally a PDF
+./export-notes --formats pages,pdf,epub   # PDF and e-book
 # available: pages, pdf, epub, word, text
 ```
 
@@ -75,26 +75,33 @@ resulting PDF is about 4.5 MB at `good`, 7 MB at `better` and 71 MB at `best` �
 which is why `good` is the default.
 
 ```bash
-./export-notes --formate pages,pdf --bildqualitaet better
+./export-notes --formats pages,pdf --quality better
 ```
 
 ### Scheduled export
 
 ```bash
-./export-notes --zeitplan taeglich              # every day at 20:00
-./export-notes --zeitplan woechentlich          # Sundays at 20:00
-./export-notes --zeitplan taeglich --um 03:30   # your own time
-./export-notes --zeitplan status                # show what is set up
-./export-notes --zeitplan aus                   # turn it off
+./export-notes --schedule daily              # every day at 20:00
+./export-notes --schedule weekly          # Sundays at 20:00
+./export-notes --schedule daily --at 03:30   # your own time
+./export-notes --schedule status                # show what is set up
+./export-notes --schedule off                   # turn it off
 ```
 
-Other options carry over, e.g. `--zeitplan taeglich --formate pages,pdf`.
+Other options carry over, e.g. `--schedule daily --formats pages,pdf`.
 Scheduling uses launchd, the macOS mechanism for recurring jobs.
 
 Two things to know: Pages briefly opens on screen during an automated run —
 unavoidable, as Pages only exports in the foreground. And on the first run macOS
 asks once for permission to control Notes and Pages; that prompt has to be
 confirmed or the scheduled export aborts.
+
+### Language
+
+Messages follow your system language (German or English). Override it with
+`--lang de|en` or the environment variable `EXPORT_NOTES_LANG`. The German
+option names (`--reihenfolge`, `--formate`, `--zeitplan`, `--bildqualitaet`,
+`--aufraeumen`, `--um`) remain valid aliases.
 
 ## What the document contains
 
@@ -120,7 +127,7 @@ Heading 1 paragraph.
   in `export-notes`).
 - **While exporting, your note contents sit in `work/` as plain text.** That
   directory is in `.gitignore` and must never be committed anywhere. Run
-  `./export-notes --aufraeumen` afterwards to remove it; the finished document
+  `./export-notes --cleanup` afterwards to remove it; the finished document
   is kept.
 
 ## Known limits

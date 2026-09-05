@@ -36,14 +36,14 @@ geteilte Notizen und deutlich größere Bestände.
 ./export-notes --test     # nur 3 Notizen, zum Ausprobieren
 ./export-notes --docx     # nur DOCX erzeugen, Pages-Schritt auslassen
 ./export-notes --status   # was hat sich seit dem letzten Export geändert?
-./export-notes --aufraeumen  # löscht die Zwischendateien (siehe Sicherheit)
+./export-notes --cleanup  # löscht die Zwischendateien (siehe Sicherheit)
 ```
 
 ### Ausgabeformate
 
 ```bash
-./export-notes --formate pages,pdf        # zusätzlich ein PDF
-./export-notes --formate pages,pdf,epub   # PDF und E-Book
+./export-notes --formats pages,pdf        # zusätzlich ein PDF
+./export-notes --formats pages,pdf,epub   # PDF und E-Book
 # möglich: pages, pdf, epub, word, text
 ```
 
@@ -52,20 +52,20 @@ PDF mit `good` etwa 4,5 MB groß, mit `better` 7 MB und mit `best` 71 MB —
 deshalb ist `good` die Voreinstellung.
 
 ```bash
-./export-notes --formate pages,pdf --bildqualitaet better
+./export-notes --formats pages,pdf --quality better
 ```
 
 ### Automatischer Export
 
 ```bash
-./export-notes --zeitplan taeglich              # täglich um 20:00
-./export-notes --zeitplan woechentlich          # sonntags um 20:00
-./export-notes --zeitplan taeglich --um 03:30   # eigene Uhrzeit
-./export-notes --zeitplan status                # zeigt, was eingerichtet ist
-./export-notes --zeitplan aus                   # schaltet ihn ab
+./export-notes --schedule daily              # täglich um 20:00
+./export-notes --schedule weekly          # sonntags um 20:00
+./export-notes --schedule daily --at 03:30   # eigene Uhrzeit
+./export-notes --schedule status                # zeigt, was eingerichtet ist
+./export-notes --schedule off                   # schaltet ihn ab
 ```
 
-Weitere Optionen werden übernommen, etwa `--zeitplan taeglich --formate pages,pdf`.
+Weitere Optionen werden übernommen, etwa `--schedule daily --formats pages,pdf`.
 Der Zeitplan läuft über launchd, den macOS-Mechanismus für wiederkehrende Aufgaben.
 
 Zwei Dinge dazu: Beim automatischen Lauf öffnet sich Pages kurz sichtbar — das
@@ -76,23 +76,31 @@ diese Rückfrage muss bestätigt werden, sonst bricht der Export ab.
 ### Reihenfolge der Notizen
 
 ```bash
-./export-notes --reihenfolge tagebuch     # älteste zuerst (Voreinstellung)
-./export-notes --reihenfolge rueckwaerts  # neueste zuerst
-./export-notes --reihenfolge geaendert    # zuletzt bearbeitete zuerst
-./export-notes --reihenfolge ordner       # nach Ordner, wie in Apple Notizen
-./export-notes --reihenfolge titel        # alphabetisch
+./export-notes --order diary     # älteste zuerst (Voreinstellung)
+./export-notes --order reverse  # neueste zuerst
+./export-notes --order modified    # zuletzt bearbeitete zuerst
+./export-notes --order folder       # nach Ordner, wie in Apple Notizen
+./export-notes --order title        # alphabetisch
 ```
 
-`tagebuch` sortiert nach dem **Erstellungsdatum**, nicht nach der letzten
+`diary` sortiert nach dem **Erstellungsdatum**, nicht nach der letzten
 Änderung — sonst rutschte eine alte Notiz nach vorn, sobald man sie einmal
 anfasst. Bei den drei zeitlichen Reihenfolgen gliedert das Inhaltsverzeichnis
-nach Jahren, bei `ordner` nach Ordnernamen.
+nach Jahren, bei `folder` nach Ordnernamen.
 
 **Ergebnis:** `iCloud Drive/Apple Notes Export/Apple Notes Gesamtexport.pages`
 
 `--status` sieht in Apple Notizen frisch nach und vergleicht mit dem letzten
 Export — es liest dafür nur Titel und Datum, keine Inhalte, und ist deshalb in
 etwa einer Sekunde fertig.
+
+### Sprache
+
+Die Ausgaben folgen deiner Systemsprache (Deutsch oder Englisch). Umstellen
+lässt sich das mit `--lang de|en` oder der Umgebungsvariable
+`EXPORT_NOTES_LANG`. Die deutschen Optionsnamen (`--reihenfolge`, `--formate`,
+`--zeitplan`, `--bildqualitaet`, `--aufraeumen`, `--um`) funktionieren
+unverändert als Zweitnamen weiter.
 
 ## Was im Dokument steht
 
@@ -117,7 +125,7 @@ alle Notiztitel echte Überschrift-1-Absätze sind.
 - Keine Netzwerkzugriffe, keine Fremddienste. Es wird nichts nachinstalliert.
 - **Während des Exports liegen deine Notizinhalte im Klartext in `work/`.**
   Das Verzeichnis steht in `.gitignore` und darf nirgendwo eingecheckt werden.
-  `./export-notes --aufraeumen` entfernt es; das fertige Dokument bleibt.
+  `./export-notes --cleanup` entfernt es; das fertige Dokument bleibt.
 - Der Ordner „Zuletzt gelöscht“ bleibt bewusst außen vor (in `export-notes`
   über `SKIP_ORDNER` änderbar).
 

@@ -45,13 +45,115 @@
 set -uo pipefail
 
 HIER="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+# Sprache der Ausgaben: folgt der Systemsprache, uebersteuerbar mit
+# EXPORT_NOTES_LANG=en|de oder --lang.
+SPRACHE="${EXPORT_NOTES_LANG:-}"
+if [ -z "$SPRACHE" ]; then
+  case "${LC_ALL:-}${LC_MESSAGES:-}${LANG:-}$(defaults read -g AppleLocale 2>/dev/null)" in
+    *de*) SPRACHE="de" ;;
+    *)    SPRACHE="en" ;;
+  esac
+fi
+# t <deutsch> <english>
+t() { if [ "$SPRACHE" = "de" ]; then printf '%s' "$1"; else printf '%s' "$2"; fi; }
+# tzeile <deutsch> <english> — gibt eine ganze Zeile aus
+tzeile() { if [ "$SPRACHE" = "de" ]; then echo "$1"; else echo "$2"; fi; }
+
+hilfe_zeigen() {
+  if [ "$SPRACHE" = "de" ]; then
+    cat <<'HILFE_DE'
+export-notes — Alle Apple-Notizen in EIN Pages-Dokument zusammenfuehren
+
+  ./export-notes                vollstaendiger Export
+  ./export-notes --test         nur 3 Notizen, zum Ausprobieren
+  ./export-notes --docx         nur DOCX, Pages-Schritt auslassen
+  ./export-notes --status       was hat sich seit dem letzten Lauf geaendert?
+  ./export-notes --cleanup      loescht die Zwischendateien mit den Notizinhalten
+
+Reihenfolge (--order):
+  diary       aelteste zuerst, chronologisch        (Voreinstellung)
+  reverse     neueste zuerst
+  modified    zuletzt bearbeitete zuerst
+  folder      nach Ordner gruppiert, wie in Notizen
+  title       alphabetisch
+
+Ausgabeformate (--formats), kommagetrennt:
+  pages, pdf, epub, word, text                      (Voreinstellung: pages)
+  --quality good|better|best   Bildqualitaet in PDF/EPUB (Voreinstellung: good)
+
+Automatischer Export:
+  --schedule daily|weekly      einrichten (--at HH:MM fuer die Uhrzeit)
+  --schedule status            zeigt, was eingerichtet ist
+  --schedule off               schaltet ihn ab
+
+Sonstiges:
+  --lang de|en                 Sprache der Ausgaben (sonst Systemsprache)
+  -h, --help                   diese Hilfe
+
+Beispiel:
+  ./export-notes --order reverse --formats pages,pdf --quality better
+
+Die deutschen Optionsnamen (--reihenfolge, --formate, --zeitplan,
+--bildqualitaet, --aufraeumen, --um) funktionieren unveraendert weiter.
+
+Liest ausschliesslich aus Apple Notizen. Es wird nie eine Notiz veraendert
+oder geloescht. Vorhandene Exporte werden versioniert statt ueberschrieben.
+HILFE_DE
+  else
+    cat <<'HILFE_EN'
+export-notes — merge all Apple Notes into ONE Pages document
+
+  ./export-notes                full export
+  ./export-notes --test         3 notes only, to try it out
+  ./export-notes --docx         DOCX only, skip the Pages step
+  ./export-notes --status       what changed since the last run?
+  ./export-notes --cleanup      delete intermediate files holding note contents
+
+Order (--order):
+  diary       oldest first, chronological           (default)
+  reverse     newest first
+  modified    most recently edited first
+  folder      grouped by folder, as in Notes
+  title       alphabetical
+
+Output formats (--formats), comma separated:
+  pages, pdf, epub, word, text                      (default: pages)
+  --quality good|better|best   image quality in PDF/EPUB (default: good)
+
+Scheduled export:
+  --schedule daily|weekly      set up (--at HH:MM for the time)
+  --schedule status            show what is set up
+  --schedule off               turn it off
+
+Other:
+  --lang de|en                 output language (otherwise system language)
+  -h, --help                   this help
+
+Example:
+  ./export-notes --order reverse --formats pages,pdf --quality better
+
+Reads from Apple Notes only. No note is ever modified or deleted. Existing
+exports are versioned rather than overwritten.
+HILFE_EN
+  fi
+}
+
 ZIEL_ORDNER="$HOME/Library/Mobile Documents/com~apple~CloudDocs/Apple Notes Export"
-ZIEL_NAME="Apple Notes Gesamtexport"
+ZIEL_NAME=""   # haengt von der Sprache ab, siehe unten
 SKIP_ORDNER="Recently Deleted"     # Papierkorb bleibt aussen vor
 PAGES_BOX="$HOME/Library/Mobile Documents/com~apple~Pages/Documents"
 
 MODUS="all"; LIMIT=0; MIT_PAGES=1; REIHENFOLGE="tagebuch"; FORMATE="pages"
 ZEITPLAN=""; UHRZEIT="20:00"; BILDQUALITAET="Good"
+# Reihenfolgewerte in beiden Sprachen annehmen
+case "$REIHENFOLGE" in
+  diary)    REIHENFOLGE="tagebuch" ;;
+  reverse)  REIHENFOLGE="rueckwaerts" ;;
+  modified) REIHENFOLGE="geaendert" ;;
+  folder)   REIHENFOLGE="ordner" ;;
+  title)    REIHENFOLGE="titel" ;;
+esac
 ERLAUBTE_REIHENFOLGEN="tagebuch rueckwaerts geaendert ordner titel"
 ERLAUBTE_FORMATE="pages pdf epub word text"
 
@@ -61,42 +163,53 @@ while [ $# -gt 0 ]; do
     --all)     MODUS="all";  LIMIT=0 ;;
     --docx)    MIT_PAGES=0 ;;
     --status)  MODUS="status" ;;
-    --aufraeumen) MODUS="aufraeumen" ;;
-    --reihenfolge)   shift; REIHENFOLGE="${1:-}" ;;
-    --reihenfolge=*) REIHENFOLGE="${1#*=}" ;;
-    --formate)       shift; FORMATE="${1:-}" ;;
-    --formate=*)     FORMATE="${1#*=}" ;;
-    --bildqualitaet)   shift; BILDQUALITAET="${1:-Good}" ;;
-    --bildqualitaet=*) BILDQUALITAET="${1#*=}" ;;
-    --zeitplan)      shift; ZEITPLAN="${1:-status}"; MODUS="zeitplan" ;;
-    --zeitplan=*)    ZEITPLAN="${1#*=}"; MODUS="zeitplan" ;;
-    --um)            shift; UHRZEIT="${1:-20:00}" ;;
-    --um=*)          UHRZEIT="${1#*=}" ;;
-    -h|--help) sed -n '2,30p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
-    *) echo "Unbekannte Option: $1  (--help zeigt die Hilfe)"; exit 2 ;;
+    --cleanup|--aufraeumen) MODUS="aufraeumen" ;;
+    --order|--reihenfolge)   shift; REIHENFOLGE="${1:-}" ;;
+    --order=*|--reihenfolge=*) REIHENFOLGE="${1#*=}" ;;
+    --formats|--formate) shift; FORMATE="${1:-}" ;;
+    --formats=*|--formate=*) FORMATE="${1#*=}" ;;
+    --quality|--bildqualitaet) shift; BILDQUALITAET="${1:-Good}" ;;
+    --quality=*|--bildqualitaet=*) BILDQUALITAET="${1#*=}" ;;
+    --schedule|--zeitplan) shift; ZEITPLAN="${1:-status}"; MODUS="zeitplan" ;;
+    --schedule=*|--zeitplan=*) ZEITPLAN="${1#*=}"; MODUS="zeitplan" ;;
+    --at|--um)       shift; UHRZEIT="${1:-20:00}" ;;
+    --at=*|--um=*)   UHRZEIT="${1#*=}" ;;
+    --lang)          shift; SPRACHE="${1:-en}" ;;
+    --lang=*)        SPRACHE="${1#*=}" ;;
+    -h|--help) hilfe_zeigen; exit 0 ;;
+    *) tzeile "Unbekannte Option: $1  (--help zeigt die Hilfe)" \
+              "Unknown option: $1  (--help shows usage)"; exit 2 ;;
   esac
   shift
 done
+case "$SPRACHE" in de|en) ;; *) SPRACHE="en" ;; esac
+
+# Ab hier steht die Sprache fest: Dateiname und Weitergabe an die
+# Python-Bausteine haengen davon ab.
+if [ "$SPRACHE" = "de" ]; then ZIEL_NAME="Apple Notes Gesamtexport"
+else ZIEL_NAME="Apple Notes Export"; fi
+export EXPORT_NOTES_LANG="$SPRACHE"
 
 case " $ERLAUBTE_REIHENFOLGEN " in
   *" $REIHENFOLGE "*) ;;
-  *) echo "Unbekannte Reihenfolge: $REIHENFOLGE"
-     echo "Moeglich sind: $ERLAUBTE_REIHENFOLGEN"; exit 2 ;;
+  *) tzeile "Unbekannte Reihenfolge: $REIHENFOLGE" "Unknown order: $REIHENFOLGE"
+     tzeile "Moeglich sind: diary reverse modified folder title" \
+              "Available: diary reverse modified folder title"; exit 2 ;;
 esac
 
 case "$(echo "$BILDQUALITAET" | tr '[:upper:]' '[:lower:]')" in
   good)   BILDQUALITAET="Good" ;;
   better) BILDQUALITAET="Better" ;;
   best)   BILDQUALITAET="Best" ;;
-  *) echo "Unbekannte Bildqualitaet: $BILDQUALITAET"
-     echo "Moeglich sind: good, better, best"; exit 2 ;;
+  *) tzeile "Unbekannte Bildqualitaet: $BILDQUALITAET" "Unknown quality: $BILDQUALITAET"
+     tzeile "Moeglich sind: good, better, best" "Available: good, better, best"; exit 2 ;;
 esac
 
 for _f in ${FORMATE//,/ }; do
   case " $ERLAUBTE_FORMATE " in
     *" $_f "*) ;;
-    *) echo "Unbekanntes Format: $_f"
-       echo "Moeglich sind: $ERLAUBTE_FORMATE"; exit 2 ;;
+    *) tzeile "Unbekanntes Format: $_f" "Unknown format: $_f"
+       tzeile "Moeglich sind: $ERLAUBTE_FORMATE" "Available: $ERLAUBTE_FORMATE"; exit 2 ;;
   esac
 done
 
@@ -117,8 +230,8 @@ sperre_nehmen() {
     local alt_pid
     alt_pid="$(cat "$SPERRE" 2>/dev/null)"
     if [ -n "$alt_pid" ] && kill -0 "$alt_pid" 2>/dev/null; then
-      echo "Es laeuft bereits ein Export (Prozess $alt_pid)."
-      echo "Bitte abwarten oder den anderen Lauf beenden."
+      tzeile "Es laeuft bereits ein Export (Prozess $alt_pid)." "An export is already running (process $alt_pid)."
+      tzeile "Bitte abwarten oder den anderen Lauf beenden." "Please wait, or stop the other run."
       exit 1
     fi
     rm -f "$SPERRE"          # verwaiste Sperre eines abgestuerzten Laufs
@@ -131,8 +244,8 @@ aufraeumen() {
   rm -f "$SPERRE"
   if [ "$rc" -ne 0 ] && [ "$rc" -ne 2 ]; then
     echo ""
-    echo "Abgebrochen. Deine Notizen sind unveraendert — es wurde nur gelesen."
-    [ -n "${LOG:-}" ] && echo "Protokoll: ${LOG/#$HOME/~}"
+    tzeile "Abgebrochen. Deine Notizen sind unveraendert — es wurde nur gelesen." "Aborted. Your notes are unchanged — nothing but reading took place."
+    [ -n "${LOG:-}" ] && tzeile "Protokoll: ${LOG/#$HOME/~}" "Log: ${LOG/#$HOME/~}"
   fi
 }
 trap aufraeumen EXIT
@@ -154,26 +267,31 @@ mit_zeitlimit() {
 }
 titel() { echo "" | tee -a "$LOG"; echo "▸ $*" | tee -a "$LOG"; }
 
-sag "Apple Notes → Pages · Export vom $(date '+%d.%m.%Y um %H:%M:%S')"
-sag "Modus: $MODUS   Reihenfolge: $REIHENFOLGE   Formate: $FORMATE"
-sag "Protokoll: ${LOG/#$HOME/~}"
+sag "Apple Notes → Pages · $(t "Export vom $(date '+%d.%m.%Y um %H:%M:%S')" "export of $(date '+%Y-%m-%d %H:%M:%S')")"
+sag "$(t "Modus" "Mode"): $MODUS   $(t "Reihenfolge" "Order"): $REIHENFOLGE   $(t "Formate" "Formats"): $FORMATE"
+sag "$(t "Protokoll: ${LOG/#$HOME/~}" "Log: ${LOG/#$HOME/~}")"
 
 # -------------------------------------------------------------- Zeitplan ----
 if [ "$MODUS" = "zeitplan" ]; then
   # shellcheck source=lib/zeitplan.sh
   . "$HIER/lib/zeitplan.sh"
   case "$ZEITPLAN" in
+    daily)   ZEITPLAN="taeglich" ;;
+    weekly)  ZEITPLAN="woechentlich" ;;
+  esac
+  case "$ZEITPLAN" in
     status) zeitplan_status ;;
     aus|off) zeitplan_aus ;;
     taeglich|woechentlich)
       if ! echo "$UHRZEIT" | grep -qE '^[0-2][0-9]:[0-5][0-9]$'; then
-        echo "Ungueltige Uhrzeit: $UHRZEIT  (erwartet HH:MM, z. B. 20:00)"; exit 2
+        tzeile "Ungueltige Uhrzeit: $UHRZEIT  (erwartet HH:MM, z. B. 20:00)" "Invalid time: $UHRZEIT  (expected HH:MM, e.g. 20:00)"; exit 2
       fi
-      ARGS=(--all --reihenfolge "$REIHENFOLGE" --formate "$FORMATE"
-            --bildqualitaet "$BILDQUALITAET")
+      ARGS=(--all --order "$REIHENFOLGE" --formats "$FORMATE"
+            --quality "$BILDQUALITAET" --lang "$SPRACHE")
       zeitplan_ein "$ZEITPLAN" "$UHRZEIT" "$HIER" "${ARGS[@]}" ;;
-    *) echo "Unbekannte Angabe: --zeitplan $ZEITPLAN"
-       echo "Moeglich sind: taeglich, woechentlich, status, aus"; exit 2 ;;
+    *) tzeile "Unbekannte Angabe: --schedule $ZEITPLAN" "Unknown value: --schedule $ZEITPLAN"
+       tzeile "Moeglich sind: daily, weekly, status, off" \
+              "Available: daily, weekly, status, off"; exit 2 ;;
   esac
   exit 0
 fi
@@ -182,19 +300,19 @@ fi
 if [ "$MODUS" = "aufraeumen" ]; then
   GROESSE="$(du -sh "$HIER/work" 2>/dev/null | cut -f1)"
   ANZ="$(find "$HIER/work" -name '*.html' 2>/dev/null | wc -l | tr -d ' ')"
-  sag "Zu loeschen: $ANZ Notiz-Zwischendateien (${GROESSE:-0}) und die Protokolle."
-  sag "Das fertige Dokument in iCloud Drive bleibt unberuehrt."
+  sag "$(t "Zu loeschen: $ANZ Notiz-Zwischendateien (${GROESSE:-0}) und die Protokolle." "To delete: $ANZ intermediate note files (${GROESSE:-0}) and the logs.")"
+  sag "$(t "Das fertige Dokument in iCloud Drive bleibt unberuehrt." "The finished document in iCloud Drive is left untouched.")"
   rm -rf "$HIER/work/all" "$HIER/work/test" "$HIER/work/status" \
          "$HIER/work/aufraeumen" "$HIER/work/.letzter_export.json"
   find "$HIER/logs" -name '*.log' -delete 2>/dev/null
-  sag "Erledigt. Der naechste --status-Vergleich beginnt wieder bei null."
+  sag "$(t "Erledigt. Der naechste --status-Vergleich beginnt wieder bei null." "Done. The next --status comparison starts from scratch.")"
   exit 0
 fi
 
 # ---------------------------------------------------------------- Status ----
 if [ "$MODUS" = "status" ]; then
   if [ ! -f "$HIER/work/.letzter_export.json" ]; then
-    sag "Noch kein vollstaendiger Export vorhanden — einmal ./export-notes ausfuehren."
+    sag "$(t "Noch kein vollstaendiger Export vorhanden — einmal ./export-notes ausfuehren." "No full export yet — run ./export-notes once.")"
     exit 0
   fi
   # Frisch nachsehen, was gerade in Notizen liegt. Nur Titel und Datum,
@@ -202,7 +320,7 @@ if [ "$MODUS" = "status" ]; then
   mkdir -p "$WORK"
   if ! osascript -l JavaScript "$HIER/lib/extract.js" "$WORK" 0 "$SKIP_ORDNER" meta \
        >>"$LOG" 2>&1; then
-    sag "  ✗ Konnte den aktuellen Stand nicht lesen (Details im Protokoll)."; exit 1
+    sag "$(t "  ✗ Konnte den aktuellen Stand nicht lesen (Details im Protokoll)." "  ✗ Could not read the current state (details in the log).")"; exit 1
   fi
   python3 "$HIER/lib/diff_manifest.py" "$WORK/manifest.json" \
           "$HIER/work/.letzter_export.json" | tee -a "$LOG"
@@ -212,81 +330,81 @@ fi
 # -------------------------------------------------------- Voraussetzungen ----
 sperre_nehmen
 
-titel "Voraussetzungen"
+titel "$(t "Voraussetzungen" "Prerequisites")"
 if osascript -e 'tell application id "com.apple.Notes" to return 1' >/dev/null 2>&1; then
-  sag "  ✓ Apple Notizen erreichbar"
+  sag "$(t "  ✓ Apple Notizen erreichbar" "  ✓ Apple Notes reachable")"
 else
-  sag "  ✗ Kein Zugriff auf Apple Notizen."
-  sag "    Bitte in Systemeinstellungen → Datenschutz & Sicherheit →"
-  sag "    Automation dem Terminal den Zugriff auf Notizen erlauben."
+  sag "$(t "  ✗ Kein Zugriff auf Apple Notizen." "  ✗ No access to Apple Notes.")"
+  sag "$(t "    Bitte in Systemeinstellungen → Datenschutz & Sicherheit →" "    In System Settings → Privacy & Security → Automation,")"
+  sag "$(t "    Automation dem Terminal den Zugriff auf Notizen erlauben." "    allow your terminal to control Notes.")"
   exit 1
 fi
 
 if [ "$MIT_PAGES" = "1" ]; then
   if osascript -e 'exists application id "com.apple.Pages"' 2>/dev/null | grep -q true; then
-    sag "  ✓ Pages installiert"
+    sag "$(t "  ✓ Pages installiert" "  ✓ Pages installed")"
   else
-    sag "  ! Pages nicht gefunden — es wird nur ein DOCX erzeugt."; MIT_PAGES=0
+    sag "$(t "  ! Pages nicht gefunden — es wird nur ein DOCX erzeugt." "  ! Pages not found — only a DOCX will be produced.")"; MIT_PAGES=0
   fi
 fi
 if python3 -c 'import sys; assert sys.version_info>=(3,8)' 2>/dev/null; then
   sag "  ✓ Python $(python3 -c 'import platform;print(platform.python_version())')"
 else
-  sag "  ✗ Python 3.8+ fehlt"
+  sag "$(t "  ✗ Python 3.8+ fehlt" "  ✗ Python 3.8+ missing")"
   exit 1
 fi
 if python3 -c 'import PIL' 2>/dev/null; then
-  sag "  ✓ Bildskalierung verfuegbar (PIL)"
+  sag "$(t "  ✓ Bildskalierung verfuegbar (PIL)" "  ✓ Image scaling available (PIL)")"
 else
-  sag "  ! PIL fehlt — Bilder werden unveraendert eingebettet"
+  sag "$(t "  ! PIL fehlt — Bilder werden unveraendert eingebettet" "  ! PIL missing — images embedded unchanged")"
 fi
 
 # iCloud Drive muss erreichbar sein, sonst landet der Export ins Leere.
 if [ -d "$(dirname "$ZIEL_ORDNER")" ]; then
-  sag "  ✓ iCloud Drive erreichbar"
+  sag "$(t "  ✓ iCloud Drive erreichbar" "  ✓ iCloud Drive reachable")"
 else
-  sag "  ✗ iCloud Drive nicht gefunden unter:"
+  sag "$(t "  ✗ iCloud Drive nicht gefunden unter:" "  ✗ iCloud Drive not found at:")"
   sag "    ${ZIEL_ORDNER/#$HOME/~}"
-  sag "    Ist iCloud Drive in den Systemeinstellungen aktiviert?"
+  sag "$(t "    Ist iCloud Drive in den Systemeinstellungen aktiviert?" "    Is iCloud Drive enabled in System Settings?")"
   exit 1
 fi
 
 # Genug Platz? Der Arbeitsordner braucht grob so viel wie die Notizen selbst.
 FREI_MB=$(df -m "$HIER" | awk 'NR==2 {print $4}')
 if [ -n "$FREI_MB" ] && [ "$FREI_MB" -lt 500 ]; then
-  sag "  ✗ Zu wenig freier Speicher: ${FREI_MB} MB (mindestens 500 MB noetig)"
+  sag "$(t "  ✗ Zu wenig freier Speicher: ${FREI_MB} MB (mindestens 500 MB noetig)" "  ✗ Not enough free space: ${FREI_MB} MB (at least 500 MB needed)")"
   exit 1
 fi
-sag "  ✓ Freier Speicher: ${FREI_MB} MB"
+sag "$(t "  ✓ Freier Speicher: ${FREI_MB} MB" "  ✓ Free space: ${FREI_MB} MB")"
 
 # ------------------------------------------------------------ Extraktion ----
-titel "Notizen lesen (ausschliesslich lesender Zugriff)"
+titel "$(t "Notizen lesen (ausschliesslich lesender Zugriff)" "Reading notes (read-only access)")"
 rm -rf "$WORK/notes"; mkdir -p "$WORK/notes"
 if ! osascript -l JavaScript "$HIER/lib/extract.js" "$WORK" "$LIMIT" "$SKIP_ORDNER" \
      >>"$LOG" 2>&1; then
-  sag "  ✗ Das Lesen der Notizen ist fehlgeschlagen (Details im Protokoll)."; exit 1
+  sag "$(t "  ✗ Das Lesen der Notizen ist fehlgeschlagen (Details im Protokoll)." "  ✗ Reading the notes failed (details in the log).")"; exit 1
 fi
 GEFUNDEN=$(python3 -c "import json;print(json.load(open('$WORK/manifest.json'))['total'])")
 LESEFEHLER=$(python3 -c "import json;print(len(json.load(open('$WORK/manifest.json'))['errors']))")
-sag "  $GEFUNDEN Notizen gelesen, $LESEFEHLER Lesefehler"
+sag "  $(t "$GEFUNDEN Notizen gelesen, $LESEFEHLER Lesefehler" "$GEFUNDEN notes read, $LESEFEHLER read errors")"
 
 # ----------------------------------------------------------- DOCX bauen -----
-titel "Dokument aufbauen"
+titel "$(t "Dokument aufbauen" "Building the document")"
 DOCX="$WORK/$ZIEL_NAME.docx"
 BUILD=$(python3 "$HIER/lib/build_docx.py" "$WORK" "$DOCX" "$REIHENFOLGE" 2>>"$LOG")
-if [ -z "$BUILD" ]; then sag "  ✗ Der Dokumentaufbau ist fehlgeschlagen."; exit 1; fi
+if [ -z "$BUILD" ]; then sag "$(t "  ✗ Der Dokumentaufbau ist fehlgeschlagen." "  ✗ Building the document failed.")"; exit 1; fi
 sag "  $(printf '%s' "$BUILD" | python3 -c "
 import json,sys
 r = json.load(sys.stdin)
 print(f\"{r['ok']} Notizen uebernommen, {r['images']} Bilder, {r['size_mb']} MB\")")"
 
-titel "Dokument pruefen"
+titel "$(t "Dokument pruefen" "Checking the document")"
 if PRUEFUNG="$(python3 "$HIER/lib/pruefe_docx.py" "$DOCX" 2>&1)"; then
   sag "  ✓ $PRUEFUNG"
 else
-  sag "  ✗ Das erzeugte Dokument ist fehlerhaft:"
+  sag "$(t "  ✗ Das erzeugte Dokument ist fehlerhaft:" "  ✗ The generated document is faulty:")"
   sag "$PRUEFUNG"
-  sag "    Abbruch, bevor Pages ein beschaedigtes Dokument erhaelt."
+  sag "$(t "    Abbruch, bevor Pages ein beschaedigtes Dokument erhaelt." "    Aborting before Pages receives a damaged document.")"
   exit 1
 fi
 
@@ -303,7 +421,7 @@ ziel_frei() {  # nie ungefragt ueberschreiben: bei Bedarf versionieren
 # -------------------------------------------------------- Pages-Schritt -----
 ERGEBNIS=""
 if [ "$MIT_PAGES" = "1" ]; then
-  titel "In Pages umwandeln"
+  titel "$(t "In Pages umwandeln" "Converting in Pages")"
   ZIEL_PAGES="$(ziel_frei "$ZIEL_NAME" pages)"
   # Pages laeuft in einer Sandbox und darf nur in den eigenen iCloud-Ordner
   # schreiben. Deshalb dort sichern und die fertige Datei anschliessend
@@ -332,11 +450,11 @@ if [ "$MIT_PAGES" = "1" ]; then
       fi
     done < "$WORK/stage.txt"
   else
-    sag "  ! Pages hat nicht rechtzeitig geantwortet."
-    sag "    Moeglicherweise wartet dort ein Dialog auf eine Eingabe."
+    sag "$(t "  ! Pages hat nicht rechtzeitig geantwortet." "  ! Pages did not respond in time.")"
+    sag "$(t "    Moeglicherweise wartet dort ein Dialog auf eine Eingabe." "    A dialog may be waiting for input there.")"
   fi
   if [ -z "$ERGEBNIS" ]; then
-    sag "  ! Pages-Umwandlung nicht moeglich (Details im Protokoll) — DOCX wird abgelegt."
+    sag "$(t "  ! Pages-Umwandlung nicht moeglich (Details im Protokoll) — DOCX wird abgelegt." "  ! Pages conversion not possible (details in the log) — storing the DOCX.")"
     MIT_PAGES=0
   fi
 fi
@@ -348,10 +466,10 @@ if [ "$MIT_PAGES" != "1" ]; then
 fi
 
 # ------------------------------------------------------------- Abgleich -----
-titel "Abgleich"
+titel "$(t "Abgleich" "Reconciliation")"
 python3 "$HIER/lib/report.py" "$WORK" "$ERGEBNIS" | tee -a "$LOG"
 [ "$MODUS" = "all" ] && cp "$WORK/manifest.json" "$HIER/work/.letzter_export.json" 2>/dev/null
 
-titel "Fertig"
-sag "  Datei:      ${ERGEBNIS/#$HOME/~}"
-sag "  Protokoll:  ${LOG/#$HOME/~}"
+titel "$(t "Fertig" "Done")"
+sag "$(t "  Datei:      ${ERGEBNIS/#$HOME/~}" "  File:       ${ERGEBNIS/#$HOME/~}")"
+sag "$(t "  Protokoll:  ${LOG/#$HOME/~}" "  Log:        ${LOG/#$HOME/~}")"
