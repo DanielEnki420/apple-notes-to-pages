@@ -123,7 +123,7 @@ if [ "$MODUS" = "aufraeumen" ]; then
   sag "Zu loeschen: $ANZ Notiz-Zwischendateien (${GROESSE:-0}) und die Protokolle."
   sag "Das fertige Dokument in iCloud Drive bleibt unberuehrt."
   rm -rf "$HIER/work/all" "$HIER/work/test" "$HIER/work/status" \
-         "$HIER/work/.letzter_export.json"
+         "$HIER/work/aufraeumen" "$HIER/work/.letzter_export.json"
   find "$HIER/logs" -name '*.log' -delete 2>/dev/null
   sag "Erledigt. Der naechste --status-Vergleich beginnt wieder bei null."
   exit 0
