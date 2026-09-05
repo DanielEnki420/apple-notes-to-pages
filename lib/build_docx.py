@@ -246,6 +246,71 @@ class NotesHTMLParser(HTMLParser):
         self.target().append(blk)
 
 
+def sips_info(pfad):
+    """Breite, Hoehe und Format ueber das macOS-Bordmittel sips ermitteln."""
+    try:
+        r = subprocess.run(['sips', '-g', 'pixelWidth', '-g', 'pixelHeight',
+                            '-g', 'format', pfad],
+                           capture_output=True, text=True, timeout=60)
+        w = h = 0
+        fmt = ''
+        for zeile in r.stdout.splitlines():
+            zeile = zeile.strip()
+            if zeile.startswith('pixelWidth:'):
+                w = int(zeile.split(':', 1)[1].strip() or 0)
+            elif zeile.startswith('pixelHeight:'):
+                h = int(zeile.split(':', 1)[1].strip() or 0)
+            elif zeile.startswith('format:'):
+                fmt = zeile.split(':', 1)[1].strip()
+        return w, h, fmt
+    except Exception:
+        return 0, 0, ''
+
+
+def process_image_sips(raw, ext):
+    """Bildverarbeitung allein mit macOS-Bordmitteln.
+
+    Wird benutzt, wenn PIL nicht zur Verfuegung steht — dann muss nichts
+    nachinstalliert werden. sips kann Groessen lesen, proportional
+    skalieren und zwischen den Formaten wandeln, HEIC eingeschlossen.
+    """
+    src = dst = None
+    try:
+        with tempfile.NamedTemporaryFile(suffix='.' + (ext or 'img'),
+                                         delete=False) as fh:
+            fh.write(raw); src = fh.name
+        w, h, fmt = sips_info(src)
+        if w <= 0 or h <= 0:
+            return None, 0, 0, ext
+
+        bekannt = fmt in ('png', 'jpeg', 'gif')
+        klein_genug = max(w, h) <= MAX_PIXELS and len(raw) < 900_000
+        if bekannt and klein_genug:
+            return raw, w, h, ('jpg' if fmt == 'jpeg' else fmt)
+
+        # Sonst umwandeln: JPEG fuer Fotos, PNG wenn Transparenz moeglich ist
+        zielformat = 'png' if fmt in ('png', 'gif') else 'jpeg'
+        dst = src + '.out.' + ('png' if zielformat == 'png' else 'jpg')
+        befehl = ['sips', '-s', 'format', zielformat]
+        if max(w, h) > MAX_PIXELS:
+            befehl += ['-Z', str(MAX_PIXELS)]
+        befehl += [src, '--out', dst]
+        r = subprocess.run(befehl, capture_output=True, timeout=180)
+        if r.returncode != 0 or not os.path.exists(dst):
+            return None, 0, 0, ext
+        nw, nh, _ = sips_info(dst)
+        with open(dst, 'rb') as fh:
+            daten = fh.read()
+        return daten, (nw or w), (nh or h), ('png' if zielformat == 'png' else 'jpg')
+    except Exception:
+        return None, 0, 0, ext
+    finally:
+        for f in (src, dst):
+            if f and os.path.exists(f):
+                try: os.unlink(f)
+                except Exception: pass
+
+
 def heic_zu_jpeg(raw):
     """HEIC/HEIF ueber das macOS-Bordmittel `sips` nach JPEG wandeln.
 
@@ -276,7 +341,7 @@ def heic_zu_jpeg(raw):
 def process_image(raw, ext):
     """Bild pruefen, exotische Formate wandeln, bei Bedarf verkleinern."""
     if not HAVE_PIL:
-        return raw, 400, 300, ext if ext in ('png', 'jpg', 'gif') else 'png'
+        return process_image_sips(raw, ext)
     try:
         im = Image.open(io.BytesIO(raw))
         im.load()

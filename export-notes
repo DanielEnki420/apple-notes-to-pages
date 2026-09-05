@@ -356,7 +356,7 @@ fi
 if python3 -c 'import PIL' 2>/dev/null; then
   sag "$(t "  ✓ Bildskalierung verfuegbar (PIL)" "  ✓ Image scaling available (PIL)")"
 else
-  sag "$(t "  ! PIL fehlt — Bilder werden unveraendert eingebettet" "  ! PIL missing — images embedded unchanged")"
+  sag "$(t "  ✓ Bildskalierung über sips (macOS-Bordmittel)" "  ✓ Image scaling via sips (macOS built-in)")"
 fi
 
 # iCloud Drive muss erreichbar sein, sonst landet der Export ins Leere.

@@ -20,6 +20,39 @@ Ein Befehl, wiederholbar, rein lesend.
 
 ---
 
+## Installation
+
+```bash
+git clone https://github.com/DanielEnki420/apple-notes-to-pages.git
+cd apple-notes-to-pages
+./export-notes --test
+```
+
+Kein Build, nichts zu installieren. Wer statt zu klonen ein ZIP herunterlädt,
+macht das Script einmalig ausführbar: `chmod +x export-notes`.
+
+**Voraussetzungen**
+
+| | |
+|---|---|
+| macOS | mit Apple Notizen (immer vorhanden) |
+| Pages | kostenlos im Mac App Store — ohne Pages entsteht ein DOCX |
+| Python 3 | das mitgelieferte genügt (`/usr/bin/python3`) |
+
+Python 3 kommt bei macOS mit den Command Line Tools. Fehlt es, bietet der erste
+Aufruf die Installation an; auslösen lässt sie sich auch mit
+`xcode-select --install`.
+
+Pillow (PIL) ist **optional**. Ist es vorhanden, wird es zum Skalieren der
+Bilder benutzt; andernfalls übernimmt `sips` diese Aufgabe — ein
+macOS-Bordmittel, das Größen ermitteln, skalieren und Formate wandeln kann.
+Beide Wege sind getestet.
+
+**Beim ersten Lauf** fragt macOS einmalig nach der Erlaubnis, Notizen und Pages
+zu steuern. Beide Rückfragen bestätigen — ohne sie kann das Script die Notizen
+nicht lesen. Nachsehen lässt sich das später unter Systemeinstellungen →
+Datenschutz & Sicherheit → Automation.
+
 ## Getestet mit
 
 Entwickelt und überprüft auf **macOS 26.6 mit Pages 15.3**, gegen einen
@@ -139,7 +172,7 @@ entsperrt die Notiz in Apple Notizen und exportiert erneut.
 
 **Große Bilder** werden auf 1400 px längste Kante verkleinert, damit das
 Dokument in Pages flüssig bleibt. Anpassbar über `MAX_PIXELS` in
-`lib/build_docx.py`.
+`lib/build_docx.py`. Skaliert wird mit Pillow, falls vorhanden, sonst mit `sips`.
 
 **HEIC-Fotos** (vom iPhone) werden über das macOS-Bordmittel `sips` nach JPEG
 gewandelt, weil DOCX das Format nicht kennt.

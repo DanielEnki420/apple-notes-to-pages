@@ -20,6 +20,37 @@ repeatable, strictly read-only.
 
 ---
 
+## Installation
+
+```bash
+git clone https://github.com/DanielEnki420/apple-notes-to-pages.git
+cd apple-notes-to-pages
+./export-notes --test
+```
+
+No build step, nothing to install. If you downloaded a ZIP instead of cloning,
+make the script executable once: `chmod +x export-notes`.
+
+**Requirements**
+
+| | |
+|---|---|
+| macOS | with Apple Notes (always present) |
+| Pages | free from the Mac App Store — without it you get a DOCX |
+| Python 3 | the system one is enough (`/usr/bin/python3`) |
+
+macOS ships Python 3 with the Command Line Tools. If it is missing, the first
+run offers to install them, or you can trigger it with
+`xcode-select --install`.
+
+Pillow (PIL) is **optional**. When present it is used for image scaling;
+otherwise the script falls back to `sips`, a macOS built-in, which handles
+sizing, scaling and format conversion just as well. Both paths are tested.
+
+**On the first run** macOS asks once for permission to control Notes and Pages.
+Confirm both prompts — without them the script cannot read your notes. You can
+review this later under System Settings → Privacy & Security → Automation.
+
 ## Tested with
 
 Developed and verified on **macOS 26.6 with Pages 15.3** against a single
@@ -139,6 +170,7 @@ Unlock them in Apple Notes and export again if you need their content.
 
 **Large images** are scaled down to 1400 px on the longest edge so the document
 stays responsive in Pages. Adjustable via `MAX_PIXELS` in `lib/build_docx.py`.
+Scaling uses Pillow when available and `sips` otherwise.
 
 **HEIC photos** (from iPhone) are converted to JPEG using the macOS built-in
 `sips`, because DOCX does not know that format.
