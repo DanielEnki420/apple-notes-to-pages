@@ -1,0 +1,31 @@
+# ---------------------------------------------------------------------------
+# WICHTIG: Hier landen die Klartext-Inhalte deiner Notizen.
+# Diese Verzeichnisse duerfen NIE in ein Repository — auch in kein privates.
+# ---------------------------------------------------------------------------
+work/
+logs/
+
+# Der Auditbericht beschreibt den konkreten Notizbestand (Anzahl, ein Titel,
+# Hinweis auf gespeicherte Zugangsdaten) — bleibt lokal.
+AUDIT.md
+
+# Exportergebnisse
+*.docx
+*.pages
+*.pages-tef
+*.pdf
+
+# Python
+__pycache__/
+*.py[cod]
+
+# macOS
+.DS_Store
+.AppleDouble
+._*
+
+# Editor / lokale Umgebung
+.claude/
+.vscode/
+.idea/
+*.swp
