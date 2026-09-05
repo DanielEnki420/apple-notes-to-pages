@@ -652,6 +652,14 @@ def main():
     doc.para([Run('Pages kann zusätzlich ein eigenes, automatisch gepflegtes '
                   'Inhaltsverzeichnis einblenden: Menü „Ansicht“ → '
                   '„Inhaltsverzeichnis einblenden“.')], style='NoteMeta')
+    # Mehrfach vergebene Titel (Apple vergibt oft "Neue Notiz") bekommen im
+    # Verzeichnis das Datum dazu — sonst stehen mehrere gleich aussehende
+    # Eintraege untereinander und man weiss nicht, welcher welcher ist.
+    haeufigkeit = {}
+    for n in notes:
+        t = (n['title'] or '(ohne Titel)').strip()
+        haeufigkeit[t] = haeufigkeit.get(t, 0) + 1
+
     # Zwischenueberschriften passend zur Sortierung: nach Ordner gruppiert
     # sind Ordnernamen sinnvoll, chronologisch sortiert die Jahreszahl.
     letzte_gruppe = None
@@ -665,9 +673,17 @@ def main():
         if gruppe and gruppe != letzte_gruppe:
             doc.para([Run(gruppe, b=True)], style='Heading3')
             letzte_gruppe = gruppe
-        title = n['title'] or '(ohne Titel)'
+        title = (n['title'] or '(ohne Titel)').strip()
+        beschriftung = title
+        if haeufigkeit.get(title, 0) > 1:
+            datum = fmt_date(n.get('created')) or fmt_date(n.get('modified'))
+            if datum:
+                beschriftung = '%s  ·  %s' % (title, datum.split(',')[0])
+            elif n.get('folder'):
+                beschriftung = '%s  ·  %s' % (title, n['folder'])
         einzug = '    ' if gruppe else ''
-        doc.internal_link_para(einzug + title, 'note%d' % n['index'], style='TOC1')
+        doc.internal_link_para(einzug + beschriftung, 'note%d' % n['index'],
+                               style='TOC1')
 
     # ---- Notizen ----
     for n in notes:
